@@ -2,6 +2,6 @@
 
 Codes:
 
-GT Charge
-GT Charge Modified
-CCGK
+1.GT Charge
+2.GT Charge Modified
+3.CCGK
