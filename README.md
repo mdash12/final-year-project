@@ -1,2 +1,7 @@
 # final-year-project
-Final year project
+
+Codes:
+
+GT Charge
+GT Charge Modified
+CCGK
