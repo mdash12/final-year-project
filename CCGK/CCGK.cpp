@@ -22,7 +22,7 @@ using namespace std;
 #define DEAD_PERCENT 0.2
 
 
-#define NO_OF_NODES 500
+#define NO_OF_NODES 1000
 #define NODE_THRESHOLD 1
 #define NODE_TRANSMISSION_RANGE 25
 #define NODE_ENERGY_CAPACITY 5
@@ -31,7 +31,7 @@ using namespace std;
 //CHARGERS
 #define NO_OF_CHARGERS 16
 #define CHARGER_THRESHOLD 150
-#define CHARGER_ENERGY_CAPACITY 1000
+#define CHARGER_ENERGY_CAPACITY 1500
 #define CHARGER_SPEED 1
 #define CHARGER_RADIUS ((CHARGER_SPEED)*(TIME_SLOT))
 
@@ -144,7 +144,7 @@ void dijkstraShortestPath(vvi &graph,vi &parent,vd &dist,vvd &interNodeDistanceM
 }
 
 
-bool double_equals(double a, double b, double epsilon = 0.001)
+bool double_equals(double a, double b, double epsilon = 0.0000001)
 {
     return std::abs(a - b) < epsilon;
 }
@@ -188,7 +188,8 @@ void computeReceivingTransmittingEnergy(vi &parent,vector<wsNode> &nodes){
 
 //@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
-
+//@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+//game
 
 //@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
@@ -231,7 +232,7 @@ void formClusters(vector<charger> &chargers,vvd &nodeChargerDistance,vvi &cluste
         for(int j=0;j<NO_OF_CHARGERS;j++){
             double prod=(1+(nodeChargerDistance[i][j]/(2*NETWORK_RADIUS)));
             prod=prod*(2-(chargers[j].remainingEnergy/CHARGER_ENERGY_CAPACITY));
-//            cout<<i<<" "<<j<<" "<<prod<<endl;
+           // cout<<i<<" "<<j<<" "<<prod<<endl;
             if(prod<minm){
                 minm=prod;
                 index=j;
@@ -242,102 +243,96 @@ void formClusters(vector<charger> &chargers,vvd &nodeChargerDistance,vvi &cluste
     }
 }
 
-void updateRENodesInCluster(vector<wsNode> &nodes,vi &clusterI,double timeInterval,double travelTime,vd &deadTime){
-
-    for(int i=0;i<clusterI.size();++i){
-        int nodeIndex=clusterI[i];
-        nodes[nodeIndex].remainingEnergy-=nodes[nodeIndex].energyDataRecvTransmit*(timeInterval/TIME_SLOT);
-
-        double x=nodes[nodeIndex].remainingEnergy;
-        if((x<0 || double_equals(x,0)) && deadTime[nodeIndex]> TOTAL_TIME){
-            deadTime[nodeIndex]=travelTime;
+void updateRENodeDeadNodes(vector<wsNode> &nodes,vvd &RENode,vi &deadNodes,int game){
+    for(int i=0;i<NO_OF_NODES;i++){
+        if(game==1 || (game>1 && !double_equals(RENode[i][game],NODE_ENERGY_CAPACITY))){
+            RENode[i][game]=RENode[i][game-1]-nodes[i].energyDataRecvTransmit;
+            //if(game ==999)
+           // cout<<RENode[i][game]<<" ";
+            if(double_equals(RENode[i][game],0) || (RENode[i][game]<0)){
+                    deadNodes[game]++;cout<<RENode[i][game]<<" ";
+            }
         }
     }
+    //if(game==999)
+    //cout<<endl;
 }
 
 
-void printRENodesInCluster(vector<wsNode> &nodes,vi &clusterI){
 
-    for(int i=0;i<clusterI.size();++i){
-        cout<<clusterI[i]<<" "<<nodes[clusterI[i]].remainingEnergy<<endl;
-    }
-}
+
+
 
 void computeChargingTrajectory(vector<charger> &chargers,vector<wsNode> &nodes,vvd &nodeChargerDistance,vvd &interNodeDistanceMatrix,
-                               vvi &clusters,vvi &trajectory,vvd &timeOfCharging,vd &deadTime,vvd &energyTransferredChargers){
+                               vvi &clusters,vvi &trajectory,vvd &energyTransferredChargers,vvd &RENode,vi &nodesCharged,int game){
 
-    double energy;
-    for(int i=0;i<NO_OF_CHARGERS;++i){
-
-        double travelTime=0;
-
-        while(travelTime<TOTAL_TIME || double_equals(travelTime,TOTAL_TIME)){
+    for(int i=0;i<NO_OF_CHARGERS;i++){
         double minm=INT_MAX,timeInterval=0;
-            int index=-1;
+        int index=-1;
 
-            for(int j=0;j<clusters[i].size();++j){
+        double remEnergyNode;
 
-                int nodeIndex=clusters[i][j];
+        for(int j=0;j<clusters[i].size();++j){
+            int nodeIndex=clusters[i][j];
 
-                //this is the node charged just now so check to move to other nodes
-                if(trajectory[i].size()>0 && trajectory[i].back()==nodeIndex)
-                    continue;
+            //if the node is already dead
+            if(RENode[nodeIndex][game]<0 || double_equals(RENode[nodeIndex][game],0))
+                continue;
 
-                double RENode=nodes[nodeIndex].remainingEnergy;
+            //if the trajectory for this game has already been decided in some previous game
+            if(trajectory[i][game]!=-1)continue;
 
-                if(RENode<0 || double_equals(RENode,0))
-                    continue;
+            //this is the node charged just now so check to move to other nodes
+            if(trajectory[i][game-1]==nodeIndex)continue;
 
-                double t;
-                if(double_equals(travelTime,0))
-                    t=nodeChargerDistance[nodeIndex][i]/CHARGER_SPEED;
-                else
-                    t=interNodeDistanceMatrix[trajectory[i].back()][nodeIndex]/CHARGER_SPEED;
+            //double RENode=nodes[nodeIndex].remainingEnergy;
 
-                energy=RENode-nodes[nodeIndex].energyDataRecvTransmit*(t/TIME_SLOT);
 
-                //if charger selects this node,energy of node will become<=0 before charger reaches it
-                if(energy<0 || double_equals(energy,0))
-                    continue;
 
-                double prod=(1+(nodeChargerDistance[nodeIndex][i]/(2*NETWORK_RADIUS)));
-                prod*=(1+(RENode/NODE_ENERGY_CAPACITY));
+            double t;
+            if(game==1)
+                t=nodeChargerDistance[nodeIndex][i]/CHARGER_SPEED;
+            else
+                t=interNodeDistanceMatrix[trajectory[i][game-1]][nodeIndex]/CHARGER_SPEED;
 
-                //cout<<s<<" "<<nodeIndex<<" "<<prod<<" "<<t<<" "<<energy<<endl;
-                if(prod<minm){
+            double energy=RENode[nodeIndex][game]-nodes[nodeIndex].energyDataRecvTransmit*ceil(t/TIME_SLOT);
+//            double energy=0;
+            if(game+ceil(t/TIME_SLOT) > NO_OF_GAMES)continue;
+
+            //if charger selects this node,energy of node will become<=0 before charger reaches it
+            if(energy<0 || double_equals(energy,0))
+                continue;
+
+
+
+            double prod=(1+(nodeChargerDistance[nodeIndex][i]/(2*NETWORK_RADIUS)));
+                prod*=(1+(RENode[nodeIndex][game]/NODE_ENERGY_CAPACITY));
+//             cout<<nodeIndex<<" "<<prod<<" "<<t<<" "<<energy<<endl;
+            if(prod<minm){
                     minm=prod;
                     index=nodeIndex;
                     timeInterval=t;
-//                    cout<<index<<" "<<minm<<" "<<timeInterval<<endl;
-                }
-            }
-
-//            cout<<minm<<" "<<index<<" "<<timeInterval<<endl;
-
-            if(travelTime <(TOTAL_TIME+1)){
-
-                trajectory[i].pb(index);
-
-                travelTime+=timeInterval;
-                timeOfCharging[i].pb(travelTime);
-                energyTransferredChargers[i].pb(NODE_ENERGY_CAPACITY - energy);
-                chargers[i].remainingEnergy-=(NODE_ENERGY_CAPACITY-nodes[index].remainingEnergy);
-
-                updateRENodesInCluster(nodes,clusters[i],timeInterval,travelTime,deadTime);
-
-               // cout<<i<<" * "<<index<<" "<<travelTime<<" "<<timeInterval<<" "<<chargers[i].remainingEnergy<<" "<<nodes[index].remainingEnergy<<endl;
-                nodes[index].remainingEnergy=NODE_ENERGY_CAPACITY;
-//                cout<<i<<" # "<<index<<" "<<travelTime<<" "<<chargers[i].remainingEnergy<<" "<<nodes[index].remainingEnergy<<endl;
-
-//              printRENodesInCluster(nodes,clusters[i]);
-
+                    remEnergyNode=energy;
+                   // cout<<index<<" "<<minm<<" "<<timeInterval<<endl;
             }
 
         }
 
+        //update trajectory
+        if(index!=-1){
+            int k;
+            for(k=game;k<=game+floor(timeInterval/TIME_SLOT) && k<=NO_OF_GAMES;k++){
+                trajectory[i][k]=index;
+            }
+            RENode[index][k-1]=NODE_ENERGY_CAPACITY;
+            energyTransferredChargers[i][k-1]=NODE_ENERGY_CAPACITY-remEnergyNode;
+            chargers[i].remainingEnergy-=(NODE_ENERGY_CAPACITY-remEnergyNode);
+            //cout<<index<<" "<<minm<<" "<<timeInterval<<endl;
+            nodesCharged[k]++;
+        }
     }
-
 }
+
 
 
 void computeChargedNodesDeadNodes(vvd &timeOfCharging,vd &deadTime,vi &nodesCharged,vi &nodesDead){
@@ -401,17 +396,16 @@ void calculateTravellingEfficiencyCumulative(vi &nodesCharged,vd &distanceTravel
 
 }
 
-void calculateAverageEnergyTransferred(vvd &timeOfCharging,vvd &energyTransferredChargers,vd &avgEnergyTransferred){
+void calculateAverageEnergyTransferred(vvd &energyTransferredChargers,vd &avgEnergyTransferred){
 
-    for(int i=0;i<NO_OF_CHARGERS;++i){
-        for(int j=0;j<energyTransferredChargers[i].size();j++){
-            int gameNo=timeOfCharging[i][j]/TIME_SLOT;
-            avgEnergyTransferred[gameNo]+=energyTransferredChargers[i][j];
+
+
+    for(int i=1;i<=NO_OF_GAMES;++i){
+        double sum=0;
+        for(int j=0;j<NO_OF_CHARGERS;j++){
+            sum+=energyTransferredChargers[j][i];
         }
-    }
-
-    for(int i=0;i<NO_OF_GAMES;++i){
-        avgEnergyTransferred[i]/=NO_OF_CHARGERS;
+        avgEnergyTransferred[i]=sum/NO_OF_CHARGERS;
     }
 }
 //@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
@@ -607,7 +601,7 @@ void writeAverageEnergyTransferredToFile(vd &avgEnergyTransferred){
 
     favgEnergyTransferred=fopen("F:\\project8\\CCGK\\Put_AVG_ENERGY_TRANSFERRED.txt","w");
 
-    for(int i=0;i<NO_OF_GAMES;++i)
+    for(int i=1;i<=NO_OF_GAMES;++i)
     {
 
         fprintf(favgEnergyTransferred,"%f ",avgEnergyTransferred[i]);
@@ -712,7 +706,7 @@ void printChargingTrajectory(vvi &trajectory){
 
     for(int i=0;i<NO_OF_CHARGERS;++i){
 
-        for(int j=0;j<trajectory[i].size();++j){
+        for(int j=1;j<=NO_OF_GAMES;++j){
             cout<<trajectory[i][j]<<" -> ";
         }
         cout<<endl;
@@ -795,62 +789,55 @@ int main(int argc, char const *argv[])
 	computeReceivingTransmittingEnergy(parent,nodes);
 	//printRecvTransEnergy(nodes);
 
-	//calculate node charger distance
-	vvd nodeChargerDistance(NO_OF_NODES+1,vd(NO_OF_CHARGERS));
-	computeNodeChargerDistance(nodes,chargers,nodeChargerDistance);
-//	printNodeChargerDistance(nodeChargerDistance);
-
-	//coordination algorithm
-	//form clusters
-	vvi clusters(NO_OF_CHARGERS);
-	formClusters(chargers,nodeChargerDistance,clusters);
-//    printClusters(clusters);
-
-    //charging phase
-    vvi trajectory(NO_OF_CHARGERS);
-    vvd timeOfCharging(NO_OF_CHARGERS);
-    vvd energyTransferredChargers(NO_OF_CHARGERS);
-    vd deadTime(NO_OF_NODES,TOTAL_TIME+1);
-    vd distanceTravelled(NO_OF_GAMES,0);
-    vd avgEnergyTransferred(NO_OF_GAMES+10,0);
 
 
-    computeChargingTrajectory(chargers,nodes,nodeChargerDistance,interNodeDistanceMatrix,
-                              clusters,trajectory,timeOfCharging,deadTime,energyTransferredChargers);
-    //printChargingTrajectory(trajectory);
-    //printNodeDeadTime(deadTime);
 
+	//################################################################################
+	vvi trajectory(NO_OF_CHARGERS,vi(NO_OF_GAMES+1,-1));
+    vvd timeOfCharging(NO_OF_CHARGERS,vd(NO_OF_GAMES+1));
+    vvd energyTransferredChargers(NO_OF_CHARGERS,vd(NO_OF_GAMES+1));
+    vvd RENode(NO_OF_NODES,vd(NO_OF_GAMES+1));
     vi nodesCharged(NO_OF_GAMES+1,0);
     vi nodesDead(NO_OF_GAMES+1,0);
 
-    computeChargedNodesDeadNodes(timeOfCharging,deadTime,nodesCharged,nodesDead);
-    //printChargedNodesDeadNodes(nodesCharged,nodesDead);
+    for(int i=0;i<NO_OF_NODES;++i){
+        RENode[i][0]=NODE_ENERGY_CAPACITY;
+    }
+
+
+
+	for(int game=1;game<=NO_OF_GAMES;game++){
+        //calculate node charger distance
+        vvd nodeChargerDistance(NO_OF_NODES+1,vd(NO_OF_CHARGERS));
+        computeNodeChargerDistance(nodes,chargers,nodeChargerDistance);
+        //printNodeChargerDistance(nodeChargerDistance);
+
+        //coordination algorithm
+        //form clusters
+        vvi clusters(NO_OF_CHARGERS);
+        formClusters(chargers,nodeChargerDistance,clusters);
+        //printClusters(clusters);
+
+        //update RE of nodes
+        updateRENodeDeadNodes(nodes,RENode,nodesDead,game);
+        computeChargingTrajectory(chargers,nodes,nodeChargerDistance,interNodeDistanceMatrix,
+                              clusters,trajectory,energyTransferredChargers,RENode,nodesCharged,game);
+
+
+	}
+	//printChargingTrajectory(trajectory);
+
+	//energy level of the network
+	vd avgEnergyTransferred(NO_OF_GAMES+1,0);
+    calculateAverageEnergyTransferred(energyTransferredChargers,avgEnergyTransferred);
+    writeAverageEnergyTransferredToFile(avgEnergyTransferred);
+
+    //chargedNodes and deadNodes
     writeChargedNodesToFile(nodesCharged);
     writeDeadNodesToFile(nodesDead);
 
+    //calculateDistanceTravelledByCharger(distanceTravelled);
+    //writeDistanceTravelledByChargerToFile(distanceTravelled);
 
-    calculateDistanceTravelledByCharger(timeOfCharging,distanceTravelled);
-    writeDistanceTravelledByChargerToFile(distanceTravelled);
-
-    //travelling efficiency
-    vd travellingEfficiency(NO_OF_GAMES,0);
-    calculateTravellingEfficiency(nodesCharged,distanceTravelled,travellingEfficiency);
-    writeTravellingEfficiencyOfChargerToFile(travellingEfficiency);
-
-    //cumulative
-    vd travellingEfficiencyCumulative(NO_OF_GAMES,0);
-    calculateTravellingEfficiencyCumulative(nodesCharged,distanceTravelled,travellingEfficiencyCumulative);
-    writeTravellingEfficiencyOfChargerCumulativeToFile(travellingEfficiencyCumulative);
-
-    //energy level of the network
-    calculateAverageEnergyTransferred(timeOfCharging,energyTransferredChargers,avgEnergyTransferred);
-    writeAverageEnergyTransferredToFile(avgEnergyTransferred);
-
-    //graphs
-    //NETWORK LIFETIME
-    double lifetime=TOTAL_TIME+1;
-    calculateNetworkLifetime(nodesDead,lifetime);
-    appendNetworkLifetimeVaryingNodesToFile(lifetime);
-    //appendNetworkLifetimeVaryingChargersToFile(lifetime);
-	return 1;
+	return 0;
 }
