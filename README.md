@@ -1,6 +1,5 @@
 # final-year-project
 
-########blame madhusmita for everything
 Codes:
 
 1.GT Charge
